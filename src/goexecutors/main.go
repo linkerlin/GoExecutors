@@ -4,6 +4,7 @@ import (
 	"config"
 	"executors"
 	"fmt"
+	"time"
 )
 
 func main() {
@@ -14,4 +15,5 @@ func main() {
 		fmt.Println("这是从一个Callable内部发出的声音。")
 		return 1
 	})
+	time.Sleep(10000)
 }
