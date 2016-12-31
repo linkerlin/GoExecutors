@@ -3,62 +3,51 @@ package executors
 import (
 	"config"
 	"fmt"
-	"sync"
 	"time"
 )
 
-type Callable *func() interface{}
-type CallableQ chan Callable
+type ErrorTimeout string
+
+func (e ErrorTimeout) Error() string { return string(e) }
+
+type Callable func() interface{}
+type CallableQ chan func() (chan interface{}, Callable)
 
 type Executors struct {
 	callableQ CallableQ
-	lock      *sync.Mutex
-	rets      map[Callable]chan interface{}
 }
 
 type Future struct {
-	es       *Executors
-	callable Callable
+	retChan chan interface{}
 }
 
-func NewFuture(es *Executors, callable Callable) *Future {
-	return &Future{es, callable}
+func NewFuture(retChan chan interface{}) *Future {
+	return &Future{retChan}
 }
 
-func (f *Future) GetResult(timeout time.Duration) interface{} {
-	fmt.Println("future get result.callable:", f.callable)
+func (f *Future) GetResult(timeout time.Duration) (interface{}, error) {
 	timer := time.NewTimer(timeout)
 	var ret interface{}
-
-	defer func() {
-		f.es.lock.Lock()
-		delete(f.es.rets, f.callable)
-		f.es.lock.Unlock()
-	}()
-	fmt.Println("future对应的结果chan:", f.es.rets[f.callable])
+	fmt.Println("future对应的结果chan:", f.retChan)
 	select {
-	case ret = <-f.es.rets[f.callable]:
+	case ret = <-f.retChan:
 		fmt.Println("future 获取到了结果：", ret)
-		return ret
+		return ret, nil
 	case <-timer.C:
-		return nil
+		return nil, ErrorTimeout("Callable执行超时错误！")
 	}
 
 }
 
 func NewExecutors() *Executors {
 	var cq = make(CallableQ, 100)
-	var es = &Executors{cq, &sync.Mutex{}, make(map[Callable]chan interface{})}
+	var es = &Executors{cq}
 	for i := 0; i < config.DefaultGoroutinesNum(); i++ {
 		go func() {
-			var callable Callable
 			for {
-				callable = <-cq
-				var ret = (*callable)()
-				es.lock.Lock()
-				var retChan = es.rets[callable]
-				es.lock.Unlock()
-				fmt.Println("callable:", callable, " ret:", ret, " to ", retChan)
+				pairFunc := <-cq
+				retChan, callable := pairFunc()
+				ret := callable()
 				fmt.Println("result chan:", retChan)
 				if retChan != nil {
 					retChan <- ret
@@ -73,9 +62,10 @@ func NewExecutors() *Executors {
 }
 
 func (es *Executors) Submit(callable Callable) *Future {
-	es.callableQ <- callable
-	es.lock.Lock()
-	es.rets[callable] = make(chan interface{}, 1) // 保证map里面有东西
-	defer es.lock.Unlock()
-	return NewFuture(es, callable)
+	retChan := make(chan interface{}, 1)
+	c := func() (chan interface{}, Callable) {
+		return retChan, callable
+	}
+	es.callableQ <- c
+	return NewFuture(retChan)
 }
