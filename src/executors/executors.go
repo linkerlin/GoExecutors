@@ -2,25 +2,35 @@ package executors
 
 import (
 	"config"
+	"sync"
 )
 
+type Callable func() interface{}
+type CallableQ chan Callable
+
 type Executors struct {
-	callableQ chan func() interface{}
+	callableQ CallableQ
+	lock      *sync.Mutex
+	rets      map[*Callable]interface{}
 }
 
 func NewExecutors() *Executors {
-	var cq = make(chan func() interface{}, 100)
+	var cq = make(CallableQ, 100)
+	var es = &Executors{cq, &sync.Mutex{}, make(map[*Callable]interface{})}
 	for i := 0; i < config.DefaultGoroutinesNum(); i++ {
 		go func() {
-			var callable func() interface{}
+			var callable Callable
 			for {
 				callable = <-cq
-				callable()
+				var ret = callable()
+				es.lock.Lock()
+				defer es.lock.Unlock()
+				es.rets[&callable] = ret
 			}
 		}()
 	}
 
-	return &Executors{cq}
+	return es
 
 }
 
