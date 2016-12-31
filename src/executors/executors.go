@@ -32,7 +32,7 @@ func NewFuture(es *Executors, callable Callable) *Future {
 }
 
 func (f *Future) GetResult(timeout time.Duration) interface{} {
-	fmt.Println("future get result.", f, timeout, f.callable)
+	fmt.Println("future get result.callable:", f.callable)
 	timer := time.NewTimer(timeout)
 	var ret interface{}
 	defer delete(f.es.rets, f.callable)
@@ -55,9 +55,9 @@ func NewExecutors() *Executors {
 			var callable Callable
 			for {
 				callable = <-cq
-				es.rets[callable] = make(chan interface{}, 1) // 保证map里面有东西
+
 				var ret = (*callable.f)()
-				fmt.Println("callable", &callable, " ret:", ret, " to ", es.rets[callable])
+				fmt.Println("callable:", callable, " ret:", ret, " to ", es.rets[callable])
 				es.lock.Lock()
 				defer es.lock.Unlock()
 				var retChan = es.rets[callable]
@@ -73,5 +73,6 @@ func NewExecutors() *Executors {
 
 func (es *Executors) Submit(callable Callable) *Future {
 	es.callableQ <- callable
+	es.rets[callable] = make(chan interface{}, 1) // 保证map里面有东西
 	return NewFuture(es, callable)
 }
