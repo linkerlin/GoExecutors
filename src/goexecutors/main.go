@@ -11,11 +11,13 @@ func main() {
 	config.LoadConfig()
 	fmt.Println("Default goroutines number is ", config.DefaultGoroutinesNum())
 	es := executors.NewExecutors()
-	var future = es.Submit(func() interface{} {
+	f := func() interface{} {
 		fmt.Println("这是从一个Callable内部发出的声音。")
 		//		time.Sleep(time.Second * 1)
 		return 1
-	})
+	}
+	var callable = executors.NewCallable(&f)
+	var future = es.Submit(*callable)
 	var ret = future.GetResult(time.Millisecond * 1500)
 	switch ret {
 	case nil:

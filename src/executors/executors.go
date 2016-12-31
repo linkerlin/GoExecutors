@@ -7,21 +7,27 @@ import (
 	"time"
 )
 
-type Callable func() interface{}
+type Callable struct {
+	f *func() interface{}
+}
 type CallableQ chan Callable
+
+func NewCallable(f *func() interface{}) *Callable {
+	return &Callable{f}
+}
 
 type Executors struct {
 	callableQ CallableQ
 	lock      *sync.Mutex
-	rets      map[*Callable]chan interface{}
+	rets      map[Callable]chan interface{}
 }
 
 type Future struct {
 	es       *Executors
-	callable *Callable
+	callable Callable
 }
 
-func NewFuture(es *Executors, callable *Callable) *Future {
+func NewFuture(es *Executors, callable Callable) *Future {
 	return &Future{es, callable}
 }
 
@@ -43,18 +49,18 @@ func (f *Future) GetResult(timeout time.Duration) interface{} {
 
 func NewExecutors() *Executors {
 	var cq = make(CallableQ, 100)
-	var es = &Executors{cq, &sync.Mutex{}, make(map[*Callable]chan interface{})}
+	var es = &Executors{cq, &sync.Mutex{}, make(map[Callable]chan interface{})}
 	for i := 0; i < config.DefaultGoroutinesNum(); i++ {
 		go func() {
 			var callable Callable
 			for {
 				callable = <-cq
-				es.rets[&callable] = make(chan interface{}, 1) // 保证map里面有东西
-				var ret = callable()
-				fmt.Println("callable", &callable, " ret:", ret, " to ", es.rets[&callable])
+				es.rets[callable] = make(chan interface{}, 1) // 保证map里面有东西
+				var ret = (*callable.f)()
+				fmt.Println("callable", &callable, " ret:", ret, " to ", es.rets[callable])
 				es.lock.Lock()
 				defer es.lock.Unlock()
-				var retChan = es.rets[&callable]
+				var retChan = es.rets[callable]
 				fmt.Println("result chan:", retChan)
 				retChan <- ret
 			}
@@ -67,5 +73,5 @@ func NewExecutors() *Executors {
 
 func (es *Executors) Submit(callable Callable) *Future {
 	es.callableQ <- callable
-	return NewFuture(es, &callable)
+	return NewFuture(es, callable)
 }
