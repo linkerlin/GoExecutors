@@ -7,14 +7,8 @@ import (
 	"time"
 )
 
-type Callable struct {
-	f *func() interface{}
-}
+type Callable *func() interface{}
 type CallableQ chan Callable
-
-func NewCallable(f *func() interface{}) *Callable {
-	return &Callable{f}
-}
 
 type Executors struct {
 	callableQ CallableQ
@@ -35,7 +29,12 @@ func (f *Future) GetResult(timeout time.Duration) interface{} {
 	fmt.Println("future get result.callable:", f.callable)
 	timer := time.NewTimer(timeout)
 	var ret interface{}
-	defer delete(f.es.rets, f.callable)
+
+	defer func() {
+		f.es.lock.Lock()
+		delete(f.es.rets, f.callable)
+		f.es.lock.Unlock()
+	}()
 	fmt.Println("future对应的结果chan:", f.es.rets[f.callable])
 	select {
 	case ret = <-f.es.rets[f.callable]:
@@ -55,14 +54,16 @@ func NewExecutors() *Executors {
 			var callable Callable
 			for {
 				callable = <-cq
-
-				var ret = (*callable.f)()
-				fmt.Println("callable:", callable, " ret:", ret, " to ", es.rets[callable])
+				var ret = (*callable)()
 				es.lock.Lock()
-				defer es.lock.Unlock()
 				var retChan = es.rets[callable]
+				es.lock.Unlock()
+				fmt.Println("callable:", callable, " ret:", ret, " to ", retChan)
 				fmt.Println("result chan:", retChan)
-				retChan <- ret
+				if retChan != nil {
+					retChan <- ret
+				}
+				fmt.Println(".")
 			}
 		}()
 	}
@@ -73,6 +74,8 @@ func NewExecutors() *Executors {
 
 func (es *Executors) Submit(callable Callable) *Future {
 	es.callableQ <- callable
+	es.lock.Lock()
 	es.rets[callable] = make(chan interface{}, 1) // 保证map里面有东西
+	defer es.lock.Unlock()
 	return NewFuture(es, callable)
 }

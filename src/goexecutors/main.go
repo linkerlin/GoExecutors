@@ -16,8 +16,8 @@ func main() {
 		//		time.Sleep(time.Second * 1)
 		return 1
 	}
-	var callable = executors.NewCallable(&f)
-	var future = es.Submit(*callable)
+
+	var future = es.Submit(&f)
 	var ret = future.GetResult(time.Millisecond * 1500)
 	switch ret {
 	case nil:
@@ -25,5 +25,20 @@ func main() {
 	default:
 		fmt.Println("执行成功", ret)
 	}
-	time.Sleep(time.Second * 3)
+	fTimeout := func() interface{} {
+		fmt.Println("这是第二次从Callable内部发出的声音。")
+		time.Sleep(time.Second * 1)
+		return 1
+	}
+	fmt.Println("=================")
+	time.Sleep(100)
+	future = es.Submit(&fTimeout)
+	ret = future.GetResult(time.Millisecond * 500)
+	switch ret {
+	case nil:
+		fmt.Println("超时！")
+	default:
+		fmt.Println("执行成功", ret)
+	}
+	time.Sleep(time.Second * 6)
 }
