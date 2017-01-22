@@ -6,13 +6,7 @@ import (
 	"time"
 )
 
-type ErrorFuture struct {
-	err interface{}
-}
-
-func (ef *ErrorFuture) Error() string {
-	return ef.err.(string)
-}
+type ErrorFuture interface{}
 
 type ErrorTimeout string
 
@@ -34,19 +28,18 @@ func NewFuture(retChan, errorChan chan interface{}) *Future {
 	return &Future{retChan, errorChan}
 }
 
-func (f *Future) GetResult(timeout time.Duration) (interface{}, error) {
+func (f *Future) GetResult(timeout time.Duration) (ret interface{}, timeoutError error, err ErrorFuture) {
 	timer := time.NewTimer(timeout)
-	var ret interface{}
-	fmt.Println("future对应的结果chan:", f.retChan)
+	// fmt.Println("future对应的结果chan:", f.retChan)
 	select {
 	case ret = <-f.retChan:
 		fmt.Println("future 获取到了结果：", ret)
-		return ret, nil
-	case err := <-f.errorChan:
+		return ret, nil, nil
+	case err = <-f.errorChan:
 		fmt.Println("future 获取到了错误：", err)
-		return nil, &ErrorFuture{err}
+		return nil, nil, err
 	case <-timer.C:
-		return nil, ErrorTimeout("Callable执行超时错误！")
+		return nil, ErrorTimeout("Callable执行超时错误！"), nil
 	}
 
 }
@@ -67,7 +60,7 @@ func NewExecutors() *Executors {
 					}
 				}()
 				ret := callable()
-				fmt.Println("result chan:", retChan)
+				// fmt.Println("result chan:", retChan)
 				if retChan != nil {
 					retChan <- ret
 				}
