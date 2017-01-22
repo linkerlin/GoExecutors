@@ -40,5 +40,17 @@ func main() {
 	default:
 		fmt.Println("超时！", err)
 	}
+	fPanic := func() interface{} {
+		fmt.Println("这是第三次从Callable内部发出的声音。")
+		panic(100)
+	}
+	future = es.Submit(fPanic)
+	ret3, err := future.GetResult(time.Millisecond * 500)
+	switch err {
+	case nil:
+		fmt.Println("执行失败,没有捕获到错误", ret3)
+	default:
+		fmt.Println("执行成功,捕获到", err)
+	}
 	time.Sleep(time.Second * 6)
 }

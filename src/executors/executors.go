@@ -6,23 +6,32 @@ import (
 	"time"
 )
 
+type ErrorFuture struct {
+	err interface{}
+}
+
+func (ef *ErrorFuture) Error() string {
+	return ef.err.(string)
+}
+
 type ErrorTimeout string
 
 func (e ErrorTimeout) Error() string { return string(e) }
 
 type Callable func() interface{}
-type CallableQ chan func() (chan interface{}, Callable)
+type CallableQ chan func() (chan interface{}, chan interface{}, Callable)
 
 type Executors struct {
 	callableQ CallableQ
 }
 
 type Future struct {
-	retChan chan interface{}
+	retChan   chan interface{}
+	errorChan chan interface{}
 }
 
-func NewFuture(retChan chan interface{}) *Future {
-	return &Future{retChan}
+func NewFuture(retChan, errorChan chan interface{}) *Future {
+	return &Future{retChan, errorChan}
 }
 
 func (f *Future) GetResult(timeout time.Duration) (interface{}, error) {
@@ -33,6 +42,9 @@ func (f *Future) GetResult(timeout time.Duration) (interface{}, error) {
 	case ret = <-f.retChan:
 		fmt.Println("future 获取到了结果：", ret)
 		return ret, nil
+	case err := <-f.errorChan:
+		fmt.Println("future 获取到了错误：", err)
+		return nil, &ErrorFuture{err}
 	case <-timer.C:
 		return nil, ErrorTimeout("Callable执行超时错误！")
 	}
@@ -45,8 +57,15 @@ func NewExecutors() *Executors {
 	for i := 0; i < config.DefaultGoroutinesNum(); i++ {
 		go func() {
 			for {
-				pairFunc := <-cq
-				retChan, callable := pairFunc()
+				var err interface{}
+				cf := <-cq
+				retChan, errorChan, callable := cf()
+				defer func() {
+					if err = recover(); err != nil {
+						fmt.Errorf("捕获了一个错误:%v", err)
+						errorChan <- err
+					}
+				}()
 				ret := callable()
 				fmt.Println("result chan:", retChan)
 				if retChan != nil {
@@ -63,9 +82,10 @@ func NewExecutors() *Executors {
 
 func (es *Executors) Submit(callable Callable) *Future {
 	retChan := make(chan interface{}, 1)
-	c := func() (chan interface{}, Callable) {
-		return retChan, callable
+	errorChan := make(chan interface{}, 1)
+	c := func() (chan interface{}, chan interface{}, Callable) {
+		return retChan, errorChan, callable
 	}
 	es.callableQ <- c
-	return NewFuture(retChan)
+	return NewFuture(retChan, errorChan)
 }
