@@ -5,6 +5,7 @@ import (
 	"errors"
 	"executors"
 	"fmt"
+	"runtime"
 	"time"
 )
 
@@ -96,6 +97,13 @@ func main() {
 		fmt.Println("不会到这里", ret)
 	}
 	fmt.Println("GoNum:", es.GetGoNum())
-	time.Sleep(time.Second * 6)
+	time.Sleep(time.Second * 3)
+	fmt.Println("GoNum:", es.GetGoNum())
+	es.Stop()
+	for es.GetGoNum() > 0 {
+		runtime.Gosched()
+		fmt.Println("GoNum:", es.GetGoNum())
+		time.Sleep(time.Millisecond * 100)
+	}
 	fmt.Println("GoNum:", es.GetGoNum())
 }

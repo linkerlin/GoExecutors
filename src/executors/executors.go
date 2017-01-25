@@ -18,7 +18,7 @@ type FutureQ chan *Future
 type Executors struct {
 	futureQ  FutureQ
 	goNum    int32
-	stopFlag bool
+	stopFlag int32
 }
 
 type Future struct {
@@ -48,27 +48,35 @@ func (f *Future) GetResult(timeout time.Duration) (ret interface{}, timeoutError
 
 func NewExecutors() *Executors {
 	var fq = make(FutureQ, 100)
-	var es = &Executors{fq, 0, false}
+	var es = &Executors{fq, 0, 1}
 	var goMainFunc = func() {
 		atomic.AddInt32(&es.goNum, 1)
 		defer atomic.AddInt32(&es.goNum, -1)
-		for es.stopFlag == false {
+		for es.stopFlag == 1 {
 			var err interface{}
-			future := <-fq
-			defer func() {
-				if err = recover(); err != nil {
-					fmt.Errorf("捕获了一个错误:%v", err)
-					future.exceptionChan <- err
+			select {
+			case future := <-fq:
+				defer func() {
+					if err = recover(); err != nil {
+						fmt.Errorf("捕获了一个错误:%v", err)
+						future.exceptionChan <- err
+					}
+				}()
+				ret, callableError := future.callable()
+				// fmt.Println("result chan:", retChan)
+				if callableError != nil {
+					future.errorChan <- callableError
+				} else if ret != nil {
+					future.retChan <- ret
 				}
-			}()
-			ret, callableError := future.callable()
-			// fmt.Println("result chan:", retChan)
-			if callableError != nil {
-				future.errorChan <- callableError
-			} else if ret != nil {
-				future.retChan <- ret
+			case <-time.After(time.Second * 1):
+				runtime.Gosched()
+				if es.GetGoNum() > config.DefaultGoroutinesNum() {
+					fmt.Println("idle gorotine.", es.GetGoNum())
+					runtime.Goexit()
+				}
 			}
-			fmt.Println(".")
+			// fmt.Println(".")
 		}
 	}
 	var i int32 = 0
@@ -83,15 +91,22 @@ func NewExecutors() *Executors {
 
 func (es *Executors) ControlGoNum(goMainFunc func()) {
 	go func() {
-		for es.stopFlag == false {
+		for es.stopFlag == 1 {
+			runtime.Gosched()
 			if es.GetGoNum() < config.DefaultGoroutinesNum() || len(es.futureQ) > 10 {
 				runtime.Gosched()
 				if es.GetGoNum() < config.DefaultGoroutinesNum() || len(es.futureQ) > 10 {
 					fmt.Println("GoNum:", es.GetGoNum(), "len(es.futureQ):", len(es.futureQ))
 					go goMainFunc()
+					go goMainFunc()
+					go goMainFunc()
+					go goMainFunc()
+					go goMainFunc()
+					runtime.Gosched()
 				}
 			} else {
 				time.Sleep(time.Millisecond * 200)
+				runtime.Gosched()
 			}
 		}
 	}()
@@ -99,6 +114,10 @@ func (es *Executors) ControlGoNum(goMainFunc func()) {
 
 func (es *Executors) GetGoNum() int32 {
 	return atomic.LoadInt32(&es.goNum)
+}
+
+func (es *Executors) Stop() {
+	atomic.StoreInt32(&es.stopFlag, 0)
 }
 
 func (es *Executors) Submit(callable Callable) *Future {
