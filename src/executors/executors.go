@@ -12,11 +12,11 @@ type ErrorTimeout string
 func (e ErrorTimeout) Error() string { return string(e) }
 
 type Callable func() (interface{}, error) // result + error
-type FutureFuncQ chan func() (future *Future)
+type FutureQ chan *Future
 
 type Executors struct {
-	futureFuncQ FutureFuncQ
-	goNum       int32
+	futureQ FutureQ
+	goNum   int32
 }
 
 type Future struct {
@@ -45,16 +45,15 @@ func (f *Future) GetResult(timeout time.Duration) (ret interface{}, timeoutError
 }
 
 func NewExecutors() *Executors {
-	var cq = make(FutureFuncQ, 100)
-	var es = &Executors{cq, 0}
+	var fq = make(FutureQ, 100)
+	var es = &Executors{fq, 0}
 	for i := 0; i < config.DefaultGoroutinesNum(); i++ {
 		go func() {
 			atomic.AddInt32(&es.goNum, 1)
 			defer atomic.AddInt32(&es.goNum, -1)
 			for {
 				var err interface{}
-				futureFunc := <-cq
-				future := futureFunc()
+				future := <-fq
 				defer func() {
 					if err = recover(); err != nil {
 						fmt.Errorf("捕获了一个错误:%v", err)
@@ -77,14 +76,15 @@ func NewExecutors() *Executors {
 
 }
 
+func (es *Executors) GetGoNum() int32 {
+	return es.goNum
+}
+
 func (es *Executors) Submit(callable Callable) *Future {
 	retChan := make(chan interface{}, 1)
 	errorChan := make(chan error, 1)
 	exceptionChan := make(chan interface{}, 1)
-	futureFunc := func() *Future {
-		return &Future{retChan, errorChan, exceptionChan, callable}
-	}
-
-	es.futureFuncQ <- futureFunc
-	return futureFunc()
+	future := &Future{retChan, errorChan, exceptionChan, callable}
+	es.futureQ <- future
+	return future
 }
