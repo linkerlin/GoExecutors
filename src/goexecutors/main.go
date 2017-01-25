@@ -57,11 +57,14 @@ func main() {
 		fmt.Println("这是第三次从Callable内部发出的声音。")
 		panic(100)
 	}
-	future = es.Submit(fPanic)
+	for i := 0; i < 3; i++ {
+		future = es.Submit(fPanic)
+	}
+
 	ret3, t, err, ex := future.GetResult(time.Millisecond * 500)
 	switch {
 	case ex != nil:
-		fmt.Println("No.3 异常", ex)
+		fmt.Printf("No.3 异常 %d\n", es.GetGoNum())
 	case err == nil && t == nil:
 		fmt.Println("执行失败,没有捕获到错误", ret3)
 	case t != nil:
@@ -73,7 +76,7 @@ func main() {
 	}
 
 	f = func() (interface{}, error) {
-		fmt.Println("这是从No.4 Callable内部发出的声音。")
+		fmt.Println("这是从No.4 Callable内部发出的声音。", es.GetGoNum())
 		//		time.Sleep(time.Second * 1)
 		return 1, errors.New("😀")
 	}
@@ -92,6 +95,7 @@ func main() {
 	default:
 		fmt.Println("不会到这里", ret)
 	}
-
+	fmt.Println("GoNum:", es.GetGoNum())
 	time.Sleep(time.Second * 6)
+	fmt.Println("GoNum:", es.GetGoNum())
 }
