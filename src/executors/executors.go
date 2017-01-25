@@ -52,7 +52,7 @@ func NewExecutors() *Executors {
 	var goMainFunc = func() {
 		atomic.AddInt32(&es.goNum, 1)
 		defer atomic.AddInt32(&es.goNum, -1)
-		for es.stopFlag == 1 {
+		for atomic.LoadInt32(&es.stopFlag) == 1 {
 			var err interface{}
 			select {
 			case future := <-fq:
@@ -91,7 +91,7 @@ func NewExecutors() *Executors {
 
 func (es *Executors) ControlGoNum(goMainFunc func()) {
 	go func() {
-		for es.stopFlag == 1 {
+		for atomic.LoadInt32(&es.stopFlag) == 1 {
 			runtime.Gosched()
 			if es.GetGoNum() < config.DefaultGoroutinesNum() || len(es.futureQ) > 10 {
 				runtime.Gosched()
