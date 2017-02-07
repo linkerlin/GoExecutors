@@ -33,7 +33,7 @@ func (f *Future) GetResult(timeout time.Duration) (ret interface{}, timeoutError
 	// fmt.Println("future对应的结果chan:", f.retChan)
 	select {
 	case exception = <-f.exceptionChan:
-		fmt.Println("future 获取到了异常：", err)
+		fmt.Println("future 获取到了异常：", exception)
 		return nil, nil, nil, exception
 	case err = <-f.errorChan:
 		fmt.Println("future 获取到了错误：", err)
