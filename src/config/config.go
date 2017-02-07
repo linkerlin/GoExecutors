@@ -4,7 +4,7 @@ import (
 	"fmt"
 )
 
-func DefaultGoroutinesNum() int {
+func DefaultGoroutinesNum() int32 {
 	return 100
 }
 
