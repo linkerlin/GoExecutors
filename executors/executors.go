@@ -1,11 +1,12 @@
 package executors
 
 import (
-	"config"
 	"fmt"
 	"runtime"
 	"sync/atomic"
 	"time"
+
+	"github.com/linkerlin/GoExecutors/config"
 )
 
 type ErrorTimeout string
@@ -16,9 +17,9 @@ type Callable func() (interface{}, error) // result + error
 type FutureQ chan *Future
 
 type Executors struct {
-	futureQ  FutureQ
-	goNum    int32
-	stopFlag int32
+	futureQ FutureQ
+	goNum   int32
+	running int32
 }
 
 type Future struct {
@@ -52,7 +53,7 @@ func NewExecutors() *Executors {
 	var goMainFunc = func() {
 		atomic.AddInt32(&es.goNum, 1)
 		defer atomic.AddInt32(&es.goNum, -1)
-		for atomic.LoadInt32(&es.stopFlag) == 1 {
+		for atomic.LoadInt32(&es.running) == 1 {
 			var err interface{}
 			select {
 			case future := <-fq:
@@ -91,7 +92,7 @@ func NewExecutors() *Executors {
 
 func (es *Executors) ControlGoNum(goMainFunc func()) {
 	go func() {
-		for atomic.LoadInt32(&es.stopFlag) == 1 {
+		for atomic.LoadInt32(&es.running) == 1 {
 			runtime.Gosched()
 			if es.GetGoNum() < config.DefaultGoroutinesNum() || len(es.futureQ) > 10 {
 				runtime.Gosched()
@@ -117,7 +118,7 @@ func (es *Executors) GetGoNum() int32 {
 }
 
 func (es *Executors) Stop() {
-	atomic.StoreInt32(&es.stopFlag, 0)
+	atomic.StoreInt32(&es.running, 0)
 }
 
 func (es *Executors) Submit(callable Callable) *Future {

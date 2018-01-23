@@ -1,12 +1,13 @@
 package main
 
 import (
-	"config"
 	"errors"
-	"executors"
 	"fmt"
 	"runtime"
 	"time"
+	
+	"github.com/linkerlin/GoExecutors/config"
+	"github.com/linkerlin/GoExecutors/executors"
 )
 
 func main() {
